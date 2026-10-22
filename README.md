@@ -2,7 +2,14 @@
 
 The offline arcade for the Senior Interaction Design Showcase. Each game lives in its own folder in `games/`, and `index.html` is the arcade.
 
-Students: you submit your game by opening a pull request that adds **one folder** to `games/`. The full guide (export settings, thumbnail, meta.json) is the **Game Submission Guide** from your instructor. These are the GitHub steps.
+## Students: start here
+
+You submit your game by opening a pull request that adds **one folder** to `games/`.
+
+1. **Get your game ready** with the **[Game Submission Guide](https://claude.ai/artifact/L6rQ4REBXSFNw9UUt6uyjG)**, Steps 1 to 3: export it (built with Claude? there's a prompt to paste), make `thumbnail.png`, and write `meta.json`.
+2. **Test and submit it** with the steps below. They match Steps 4 and 5 of the guide.
+
+Stuck? The guide's Troubleshooting table covers the common problems. If the checker reports something you can't fix, paste its message into the Claude conversation where you built the game.
 
 ## Submit your game
 
