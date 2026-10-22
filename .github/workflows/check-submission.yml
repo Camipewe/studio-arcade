@@ -1,0 +1,42 @@
+# Runs on every pull request. Checks only the game folder(s) the pull request
+# adds or changes, using the checker from main (so a pull request can't
+# change the rules it's checked against).
+name: Check game submission
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Arcade check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check the submitted game
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git show "$BASE_SHA:check_games.py" > check_games.py
+          set +e
+          python3 check_games.py --pr "$BASE_SHA" > report.txt 2>&1
+          status=$?
+          set -e
+          cat report.txt
+          {
+            if [ "$status" -eq 0 ]; then echo "## :white_check_mark: Ready for the arcade"; else echo "## :x: Needs fixes before it can go in the arcade"; fi
+            echo
+            echo '```'
+            cat report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $status

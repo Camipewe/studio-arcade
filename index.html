@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<!--
+  ============================================================================
+  ARCADE KIOSK LAUNCHER
+  Senior Interaction Design Showcase
+
+  Fully offline. No libraries, no CDNs, no build step.
+  Run it with:   python3 -m http.server 8080   (from inside arcade-kiosk/)
+  Then open:     http://localhost:8080
+
+  Expected folder layout:
+    arcade-kiosk/
+      index.html              <- this file
+      games/
+        astro-dodge/
+          index.html          <- the game itself
+          thumbnail.png       <- 16:9 screenshot (1280x720 recommended)
+        tidepool/
+          index.html
+          thumbnail.png
+
+  To add or remove games, scroll to the GAMES array at the top of the
+  <script> tag below. That is the only part you normally need to edit.
+  ============================================================================
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="color-scheme" content="dark">
+<title>Studio Arcade</title>
+<style>
+  /* ---------- Design tokens ---------- */
+  :root {
+    --bg: #0b0b0f;
+    --bg-2: #111118;
+    --card: #16161e;
+    --line: #2a2a36;
+    --ink: #f4f1ea;
+    --muted: #9a97a6;
+    --accent: #d7ff3a;      /* acid yellow: primary actions */
+    --accent-ink: #0b0b0f;
+    --hot: #ff4d2e;         /* signal orange: badges, warnings */
+    --radius: 14px;
+    --display: "Helvetica Neue", "Arial Black", Arial, system-ui, sans-serif;
+    --body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --gutter: clamp(16px, 3.2vw, 48px);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--body);
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;          /* no double-tap zoom on iPad */
+    overscroll-behavior: none;
+  }
+  body.locked { overflow: hidden; }
+  button { font: inherit; color: inherit; }
+
+  /* ---------- Header ---------- */
+  .site-header {
+    padding: calc(var(--gutter) * 0.9) var(--gutter) 0;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 24px 40px;
+    align-items: end;
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 14px;
+    display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+  }
+  .eyebrow .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px var(--accent); }
+  h1 {
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: clamp(48px, 7.4vw, 112px);
+    line-height: 0.88;
+    letter-spacing: -0.045em;
+    margin: 0;
+    text-transform: uppercase;
+  }
+  h1 em { font-style: normal; color: var(--accent); }
+  .tagline {
+    margin: 16px 0 0;
+    font-size: clamp(17px, 1.6vw, 22px);
+    font-weight: 600;
+    color: var(--ink);
+    max-width: 40ch;
+  }
+  .counter {
+    border: 2px solid var(--ink);
+    border-radius: var(--radius);
+    padding: 14px 22px 16px;
+    min-width: 168px;
+    text-align: left;
+  }
+  .counter-num {
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: clamp(52px, 5.6vw, 80px);
+    line-height: 0.9;
+    letter-spacing: -0.04em;
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+    display: block;
+  }
+  .counter-label {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    display: flex; align-items: center; gap: 8px; margin-top: 6px;
+  }
+  .live { width: 7px; height: 7px; border-radius: 50%; background: var(--hot); animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.25; } }
+
+  /* ---------- Ticker ---------- */
+  .ticker {
+    margin-top: calc(var(--gutter) * 0.8);
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    overflow: hidden;
+    white-space: nowrap;
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 12px 0;
+  }
+  .ticker-track { display: inline-block; animation: tick 40s linear infinite; }
+  .ticker-track span { padding: 0 28px; }
+  .ticker-track b { color: var(--accent); font-weight: 600; }
+  @keyframes tick { to { transform: translateX(-50%); } }
+
+  /* ---------- Grid ---------- */
+  main { padding: var(--gutter); }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr));
+    gap: clamp(16px, 2vw, 28px);
+  }
+  .card {
+    appearance: none;
+    text-align: left;
+    background: var(--card);
+    border: 2px solid var(--line);
+    border-radius: var(--radius);
+    padding: 0;
+    overflow: hidden;
+    cursor: pointer;
+    display: flex; flex-direction: column;
+    transition: transform 220ms cubic-bezier(.2,.8,.2,1), border-color 180ms, box-shadow 220ms;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.4);
+  }
+  @media (hover: hover) {
+    .card:hover {
+      transform: translateY(-6px) scale(1.015);
+      border-color: var(--accent);
+      box-shadow: 0 22px 44px -18px rgba(0,0,0,0.85), 0 0 0 1px var(--accent);
+    }
+    .card:hover .launch { background: var(--accent); color: var(--accent-ink); }
+    .card:hover .thumb img { transform: scale(1.04); }
+  }
+  .card:active { transform: scale(0.985); transition-duration: 80ms; }
+  .card:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+
+  .thumb {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    background: var(--bg-2);
+    overflow: hidden;
+    border-bottom: 2px solid var(--line);
+  }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 400ms cubic-bezier(.2,.8,.2,1); }
+  .thumb-fallback {
+    position: absolute; inset: 0;
+    display: grid; place-items: center;
+    font-family: var(--display); font-weight: 900;
+    font-size: clamp(44px, 5vw, 64px); letter-spacing: -0.04em;
+    color: rgba(255,255,255,0.92);
+    background:
+      repeating-linear-gradient(135deg, rgba(255,255,255,0.06) 0 2px, transparent 2px 14px),
+      linear-gradient(135deg, hsl(var(--h) 70% 38%), hsl(calc(var(--h) + 50) 80% 22%));
+  }
+  .num {
+    position: absolute; top: 10px; left: 10px;
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.1em;
+    background: rgba(11,11,15,0.82); color: var(--ink);
+    padding: 5px 8px; border-radius: 6px;
+  }
+  .card-body { padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+  .pills { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pill {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+    border: 1px solid var(--line); color: var(--muted);
+    padding: 4px 9px; border-radius: 999px;
+  }
+  .pill.warn { border-color: var(--hot); color: var(--hot); }
+  .card-title {
+    font-family: var(--display); font-weight: 900;
+    font-size: clamp(22px, 2vw, 28px); line-height: 1.05; letter-spacing: -0.025em;
+    margin: 2px 0 0;
+  }
+  .card-student { color: var(--muted); font-size: 15px; margin: 0; }
+  .card-student b { color: var(--ink); font-weight: 600; }
+  .launch {
+    margin-top: auto;
+    display: flex; justify-content: space-between; align-items: center;
+    border: 2px solid var(--ink);
+    border-radius: 10px;
+    padding: 12px 16px;
+    min-height: 50px;
+    font-weight: 800; font-size: 15px; letter-spacing: 0.02em; text-transform: uppercase;
+    transition: background 160ms, color 160ms;
+  }
+  .launch .arrow { font-size: 20px; line-height: 1; }
+
+  .empty {
+    border: 2px dashed var(--line); border-radius: var(--radius);
+    padding: 48px; text-align: center; color: var(--muted);
+  }
+  .empty code { color: var(--accent); }
+  .more-note {
+    margin: clamp(20px, 2.4vw, 32px) 0 0;
+    font-family: var(--mono); font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .more-note::before { content: ""; width: 24px; height: 2px; background: var(--accent); }
+
+  footer {
+    padding: 0 var(--gutter) calc(var(--gutter) * 0.8);
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em;
+    color: var(--muted); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  }
+  footer .warn { color: var(--hot); }
+
+  /* ---------- Game overlay ---------- */
+  .overlay {
+    position: fixed; inset: 0; z-index: 100;
+    background: #000;
+    display: grid; grid-template-rows: auto 1fr;
+    opacity: 0; visibility: hidden;
+    transition: opacity 180ms ease, visibility 0s linear 180ms;
+  }
+  .overlay.open { opacity: 1; visibility: visible; transition: opacity 180ms ease; }
+
+  .bar {
+    position: relative; z-index: 2;
+    display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 16px;
+    padding: 10px max(14px, env(safe-area-inset-right)) 10px max(14px, env(safe-area-inset-left));
+    padding-top: max(10px, env(safe-area-inset-top));
+    background: var(--bg);
+    border-bottom: 2px solid var(--accent);
+  }
+  .btn {
+    appearance: none; cursor: pointer;
+    min-height: 56px; min-width: 56px;
+    border-radius: 12px; border: 2px solid var(--ink);
+    padding: 0 20px;
+    font-weight: 800; font-size: 16px; letter-spacing: 0.03em; text-transform: uppercase;
+    background: transparent;
+    display: inline-flex; align-items: center; gap: 10px;
+    transition: transform 100ms, background 140ms, color 140ms;
+  }
+  .btn:active { transform: scale(0.96); }
+  .btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+  .btn-exit { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-size: 17px; }
+  .btn-exit .x { font-size: 22px; line-height: 1; }
+  .btn-help[aria-expanded="true"] { background: var(--ink); color: var(--bg); }
+  .now-playing { min-width: 0; text-align: center; }
+  .now-title {
+    font-family: var(--display); font-weight: 900; font-size: clamp(18px, 2vw, 24px);
+    letter-spacing: -0.02em; margin: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .now-student { margin: 2px 0 0; font-size: 14px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .help-pop {
+    position: absolute; top: calc(100% + 10px); right: 14px;
+    width: min(420px, calc(100vw - 28px));
+    background: var(--ink); color: var(--bg);
+    border-radius: var(--radius);
+    padding: 20px 22px;
+    box-shadow: 0 24px 60px -12px rgba(0,0,0,0.8);
+    transform-origin: top right;
+    transform: translateY(-6px) scale(0.98); opacity: 0; pointer-events: none;
+    transition: opacity 160ms, transform 160ms;
+  }
+  .help-pop.show { opacity: 1; transform: none; pointer-events: auto; }
+  .help-pop::before {
+    content: ""; position: absolute; top: -7px; right: 44px;
+    width: 14px; height: 14px; background: var(--ink); transform: rotate(45deg);
+  }
+  .help-pop h2 { font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; margin: 0 0 8px; color: #55525e; }
+  .help-pop p { margin: 0; font-size: 17px; line-height: 1.45; font-weight: 500; white-space: pre-line; }
+
+  .stage { position: relative; background: #000; }
+  .stage iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: #000; }
+
+  /* Idle warning */
+  .idle-toast {
+    position: fixed; left: 50%; bottom: 28px; z-index: 120;
+    transform: translate(-50%, 20px); opacity: 0; pointer-events: none;
+    background: var(--hot); color: #fff;
+    border-radius: 999px; padding: 14px 24px;
+    font-weight: 800; font-size: 16px; letter-spacing: 0.02em;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.6);
+    transition: opacity 200ms, transform 200ms;
+  }
+  .idle-toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 760px) {
+    .site-header { grid-template-columns: 1fr; }
+    .counter { justify-self: start; }
+    .btn-help .label, .btn-exit .label-long { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div>
+    <p class="eyebrow"><span class="dot"></span><span id="dept"></span><span aria-hidden="true">/</span><span id="term"></span></p>
+    <h1 id="studio"></h1>
+    <p class="tagline" id="tagline"></p>
+  </div>
+  <div class="counter" aria-live="polite">
+    <span class="counter-num" id="count">00</span>
+    <span class="counter-label"><span class="live"></span><span id="count-label">Games available</span></span>
+  </div>
+</header>
+
+<div class="ticker" aria-hidden="true"><div class="ticker-track" id="ticker"></div></div>
+
+<main id="main">
+  <div class="grid" id="grid"></div>
+  <p class="more-note" id="more-note" hidden></p>
+</main>
+
+<footer>
+  <span id="footer-left"></span>
+  <span id="mode"></span>
+</footer>
+
+<!-- Full-screen game overlay -->
+<div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-labelledby="now-title" aria-hidden="true">
+  <div class="bar">
+    <button class="btn btn-exit" id="exit-btn" type="button">
+      <span class="x" aria-hidden="true">&larr;</span><span>Exit<span class="label-long"> to Arcade</span></span>
+    </button>
+    <div class="now-playing">
+      <p class="now-title" id="now-title"></p>
+      <p class="now-student" id="now-student"></p>
+    </div>
+    <button class="btn btn-help" id="help-btn" type="button" aria-expanded="false" aria-controls="help-pop">
+      <span aria-hidden="true">?</span><span class="label">How to Play</span>
+    </button>
+    <div class="help-pop" id="help-pop" role="tooltip">
+      <h2>Controls / How to play</h2>
+      <p id="help-text"></p>
+    </div>
+  </div>
+  <div class="stage" id="stage"></div>
+</div>
+
+<div class="idle-toast" id="idle-toast" role="status"></div>
+
+<script>
+/* ============================================================================
+   GAMES — EDIT THIS LIST
+   ----------------------------------------------------------------------------
+   THE FAST WAY (recommended):
+     Put every game folder in games/, then from the arcade folder run
+       python3 check_games.py --write        (Windows: py check_games.py --write)
+     It checks every folder for problems and rebuilds the list between the
+     GAMES:START and GAMES:END lines below from each folder's meta.json.
+     Anything you typed between those two lines by hand gets replaced.
+
+   BY HAND:
+     1. Put the student's folder in  arcade-kiosk/games/<slug>/
+        (slug = lowercase, hyphens, no spaces, e.g. "astro-dodge")
+     2. Copy one { ... } block below, paste it at the end of the list,
+        and change every value. Keep the comma between blocks.
+     3. Save this file and refresh the browser.
+
+   TO REMOVE A GAME:
+     Delete its whole { ... } block (including the trailing comma), or
+     put  //  in front of each of its lines to hide it temporarily.
+
+   FIELDS:
+     id           unique, usually the same as the folder slug
+     title        shown on the card and in the top bar
+     student      creator credit
+     instructions shown in the "How to Play" tooltip (use \n for a new line)
+     path         games/<slug>/index.html   (case-sensitive on iPad!)
+     thumbnail    games/<slug>/thumbnail.png (16:9). A placeholder is drawn if missing.
+     tag          optional: short genre pill, e.g. "Arcade", "Puzzle"
+     input        optional: any of "keyboard", "mouse", "touch", "gamepad".
+                  On a tablet, games without "touch" get a "Needs keyboard" badge.
+     devices      optional: which devices show this game. Any of
+                  "desktop" (laptop/desktop with mouse or trackpad),
+                  "tablet" (iPad and other tablets), "phone".
+                    devices: ["desktop"]           -> laptop only
+                    devices: ["tablet", "phone"]   -> touch devices only
+                  Leave it out to show the game on every device.
+
+   PREVIEW ANOTHER DEVICE: add ?device=tablet to the address, e.g.
+     http://localhost:8080/?device=tablet   (also: desktop, phone, all)
+   "all" shows every game regardless of device. Handy while editing.
+
+   Card order on screen = order in this list.
+   ============================================================================ */
+// GAMES:START
+// Written by check_games.py. Run it again after adding or changing games.
+const GAMES = [
+  {
+    id: "sample-star-catcher",
+    title: "Star Catcher",
+    student: "Sample Game",
+    instructions: "Move with the mouse, your finger, or the arrow keys.\nCatch gold stars. Dodge red ones.\nP to pause.",
+    path: "games/sample-star-catcher/index.html",
+    thumbnail: "games/sample-star-catcher/thumbnail.png",
+    tag: "Arcade",
+    input: ["mouse", "touch", "keyboard"],
+    devices: ["desktop", "tablet", "phone"]
+  }
+];
+// GAMES:END
+
+/* ---------- Header text and kiosk settings ---------- */
+const CONFIG = {
+  department: "Department of Interaction Design",
+  term: "Fall 2026",
+  studio: "Studio <em>Arcade</em>",           // <em> renders in the accent color
+  tagline: "Senior Interaction Design Showcase",
+  idleMinutes: 3,                              // auto-return to menu after this much inactivity
+  idleWarningSeconds: 15,                      // countdown shown before auto-exit (0 = none)
+  filterByDevice: true,                        // false = ignore "devices" and show every game
+  showOtherDeviceNote: true                    // "+2 more games on other devices in the room"
+};
+
+/* ============================================================================
+   Launcher logic — no edits needed below this line
+   ============================================================================ */
+(function () {
+  "use strict";
+
+  const $ = (id) => document.getElementById(id);
+  const grid = $("grid"), overlay = $("overlay"), stage = $("stage"), main = $("main");
+  const helpBtn = $("help-btn"), helpPop = $("help-pop"), toast = $("idle-toast");
+
+  const IDLE_MS = CONFIG.idleMinutes * 60 * 1000;
+  const WARN_MS = Math.min(CONFIG.idleWarningSeconds * 1000, IDLE_MS);
+  const ACTIVITY_EVENTS = ["pointerdown", "pointermove", "mousedown", "mousemove", "keydown", "touchstart", "touchmove", "wheel"];
+  const isTouchDevice = window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+  const isFileMode = location.protocol === "file:";
+
+  /* ---------- Device detection ----------
+     desktop = primary pointer is a mouse/trackpad (includes touchscreen laptops)
+     tablet  = touch-first device with a short side of 600px or more (iPad, even
+               though iPad Safari reports itself as a Mac)
+     phone   = touch-first device with a short side under 600px
+     ?device=desktop|tablet|phone|all in the address overrides the guess. */
+  const DEVICE_NAMES = { desktop: "this computer", tablet: "this tablet", phone: "this phone", all: "all devices" };
+  function detectDevice() {
+    let forced = null;
+    try { forced = new URLSearchParams(location.search).get("device"); } catch (e) {}
+    if (forced && DEVICE_NAMES[forced.toLowerCase()]) return forced.toLowerCase();
+    const coarse = window.matchMedia("(pointer: coarse)").matches;
+    const ipadAsMac = navigator.maxTouchPoints > 1 && !window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+    if (!coarse && !ipadAsMac) return "desktop";
+    const shortSide = Math.min(window.screen.width, window.screen.height);
+    return shortSide < 600 ? "phone" : "tablet";
+  }
+  const DEVICE = detectDevice();
+  function supportsDevice(game) {
+    if (!CONFIG.filterByDevice || DEVICE === "all") return true;
+    if (!Array.isArray(game.devices) || !game.devices.length) return true;
+    return game.devices.includes(DEVICE);
+  }
+  const VISIBLE = GAMES.filter(supportsDevice);
+  const HIDDEN_COUNT = GAMES.length - VISIBLE.length;
+
+  let frame = null, current = null, lastCard = null;
+  let idleTimer = null, warnTimer = null, countdownTimer = null, lastActivity = 0, helpTimer = null;
+
+  /* ---------- Header ---------- */
+  $("dept").textContent = CONFIG.department;
+  $("term").textContent = CONFIG.term;
+  $("studio").innerHTML = CONFIG.studio;
+  $("tagline").textContent = CONFIG.tagline;
+  document.title = $("studio").textContent;
+
+  const tickerBits = ["<b>Tap any card</b> to play", "Senior Interaction Design Showcase", "Made by students", "<b>Insert coin</b> &mdash; free play", CONFIG.term];
+  const tickerHTML = tickerBits.map((t) => "<span>" + t + "</span><span>&#9670;</span>").join("");
+  $("ticker").innerHTML = tickerHTML + tickerHTML; // doubled for a seamless loop
+
+  $("footer-left").textContent = "Press Esc or tap Exit to return to the arcade";
+  if (isFileMode) {
+    $("mode").innerHTML = '<span class="warn">Opened as a file. For the full kiosk behavior run it from http://localhost:8080</span>';
+  } else {
+    $("mode").textContent = "Kiosk mode · auto-return after " + CONFIG.idleMinutes + " min idle";
+  }
+
+  /* ---------- Validate list (helps catch typos while editing) ---------- */
+  const seen = new Set();
+  GAMES.forEach((g, i) => {
+    ["id", "title", "student", "path"].forEach((k) => {
+      if (!g[k]) console.warn("[arcade] GAMES[" + i + "] is missing \"" + k + "\"", g);
+    });
+    if (seen.has(g.id)) console.warn("[arcade] Duplicate id \"" + g.id + "\". Each id must be unique.");
+    seen.add(g.id);
+    if (g.devices != null) {
+      const bad = (Array.isArray(g.devices) ? g.devices : [g.devices]).filter((d) => !["desktop", "tablet", "phone"].includes(d));
+      if (!Array.isArray(g.devices) || bad.length) console.warn("[arcade] GAMES[" + i + "] devices must be a list using \"desktop\", \"tablet\", \"phone\". Got:", g.devices);
+    }
+  });
+  console.info("[arcade] Device: " + DEVICE + ". Showing " + VISIBLE.length + " of " + GAMES.length + " games. Add ?device=all to the address to see every game.");
+
+  /* ---------- Counter label + note about other devices ---------- */
+  if (CONFIG.filterByDevice) {
+    $("count-label").textContent = "Games on " + DEVICE_NAMES[DEVICE];
+  }
+  if (CONFIG.filterByDevice && CONFIG.showOtherDeviceNote && HIDDEN_COUNT > 0) {
+    const note = $("more-note");
+    note.textContent = "+" + HIDDEN_COUNT + " more " + (HIDDEN_COUNT === 1 ? "game" : "games") + " playable on other devices in the room";
+    note.hidden = false;
+  }
+
+  /* ---------- Counter ---------- */
+  function animateCount(target) {
+    const el = $("count");
+    const pad = (n) => String(n).padStart(2, "0");
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || target === 0) { el.textContent = pad(target); return; }
+    const start = performance.now(), dur = 700;
+    (function step(now) {
+      const p = Math.min(1, (now - start) / dur);
+      el.textContent = pad(Math.round(target * (1 - Math.pow(1 - p, 3))));
+      if (p < 1) requestAnimationFrame(step);
+    })(start);
+  }
+
+  /* ---------- Cards ---------- */
+  function hue(str) { let h = 0; for (const c of str) h = (h * 31 + c.charCodeAt(0)) % 360; return h; }
+  function initials(title) { return title.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase(); }
+  function el(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+
+  function makeFallback(game) {
+    const f = el("div", "thumb-fallback", initials(game.title || "?"));
+    f.style.setProperty("--h", hue(game.id || game.title || "x"));
+    return f;
+  }
+
+  function render() {
+    grid.textContent = "";
+    if (!GAMES.length) {
+      grid.innerHTML = '<div class="empty">No games yet. Add entries to the <code>GAMES</code> list at the top of the script in index.html.</div>';
+      animateCount(0);
+      return;
+    }
+    if (!VISIBLE.length) {
+      grid.innerHTML = '<div class="empty">None of the games are set up for ' + DEVICE_NAMES[DEVICE] + '. Check their <code>devices</code> lists, or add <code>?device=all</code> to the address.</div>';
+      animateCount(0);
+      return;
+    }
+    VISIBLE.forEach((game, i) => {
+      const card = el("button", "card");
+      card.type = "button";
+      card.setAttribute("aria-label", "Launch " + game.title + " by " + game.student);
+
+      const thumb = el("div", "thumb");
+      if (game.thumbnail) {
+        const img = new Image();
+        img.alt = "";
+        img.loading = "lazy";
+        img.decoding = "async";
+        img.onerror = () => img.replaceWith(makeFallback(game));
+        img.src = game.thumbnail;
+        thumb.appendChild(img);
+      } else {
+        thumb.appendChild(makeFallback(game));
+      }
+      thumb.appendChild(el("span", "num", String(i + 1).padStart(2, "0")));
+
+      const body = el("div", "card-body");
+      const pills = el("div", "pills");
+      pills.appendChild(el("span", "pill", game.tag || "Game"));
+      const inputs = Array.isArray(game.input) ? game.input : [];
+      if (isTouchDevice && inputs.length && !inputs.includes("touch")) {
+        pills.appendChild(el("span", "pill warn", inputs.includes("gamepad") && !inputs.includes("keyboard") ? "Needs controller" : "Needs keyboard"));
+      }
+      body.appendChild(pills);
+      body.appendChild(el("h2", "card-title", game.title));
+      const who = el("p", "card-student", "by ");
+      who.appendChild(el("b", null, game.student));
+      body.appendChild(who);
+
+      const launch = el("span", "launch");
+      launch.appendChild(el("span", null, "Launch Game"));
+      launch.appendChild(el("span", "arrow", "\u2192"));
+      body.appendChild(launch);
+
+      card.append(thumb, body);
+      card.addEventListener("click", () => openGame(game, card));
+      grid.appendChild(card);
+    });
+    animateCount(VISIBLE.length);
+  }
+
+  /* ---------- Open / close ---------- */
+  function openGame(game, card) {
+    if (current) closeGame();
+    current = game;
+    lastCard = card || null;
+
+    $("now-title").textContent = game.title;
+    $("now-student").textContent = "by " + game.student;
+    $("help-text").textContent = game.instructions || "No instructions provided. Try the arrow keys, mouse, or tapping the screen.";
+
+    // A fresh iframe per launch guarantees nothing lingers from the last game.
+    frame = document.createElement("iframe");
+    frame.title = game.title + " by " + game.student;
+    frame.setAttribute("allow", "autoplay; fullscreen; gamepad; accelerometer; gyroscope");
+    frame.addEventListener("load", onFrameLoad);
+    frame.src = game.path;
+    stage.appendChild(frame);
+
+    overlay.classList.add("open");
+    overlay.setAttribute("aria-hidden", "false");
+    main.inert = true;
+    document.body.classList.add("locked");
+
+    // Show controls briefly on launch, then tuck them away.
+    setHelp(true);
+    clearTimeout(helpTimer);
+    helpTimer = setTimeout(() => setHelp(false), 6000);
+
+    resetIdle(true);
+    setTimeout(() => frame && frame.focus(), 60);
+  }
+
+  function closeGame(reason) {
+    if (!current) return;
+
+    // REQUIRED: blank the iframe immediately so audio, canvas loops and music stop,
+    // then remove it entirely so no timers or AudioContexts survive.
+    if (frame) {
+      frame.removeEventListener("load", onFrameLoad);
+      frame.src = "";
+      frame.remove();
+      frame = null;
+    }
+    current = null;
+
+    clearIdle();
+    hideToast();
+    setHelp(false);
+    clearTimeout(helpTimer);
+
+    overlay.classList.remove("open");
+    overlay.setAttribute("aria-hidden", "true");
+    main.inert = false;
+    document.body.classList.remove("locked");
+
+    if (reason === "idle") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      if (document.activeElement) document.activeElement.blur();
+    } else if (lastCard) {
+      lastCard.focus({ preventScroll: true });
+    }
+  }
+
+  /* When the game is same-origin (http://localhost), listen inside it too.
+     Otherwise input inside the game never reaches this page, and the idle
+     timer would kick out someone who is actively playing. */
+  function onFrameLoad() {
+    try {
+      const doc = frame.contentWindow.document;
+      ACTIVITY_EVENTS.forEach((ev) => doc.addEventListener(ev, onActivity, { capture: true, passive: true }));
+      doc.addEventListener("keydown", onKeydown, true);
+    } catch (err) {
+      console.warn("[arcade] Can't watch input inside the game (cross-origin or file://). Run from http://localhost:8080 so the idle timer sees gameplay.");
+    }
+  }
+
+  /* ---------- Help tooltip ---------- */
+  function setHelp(show) {
+    helpPop.classList.toggle("show", show);
+    helpBtn.setAttribute("aria-expanded", String(show));
+  }
+  helpBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    clearTimeout(helpTimer);
+    setHelp(!helpPop.classList.contains("show"));
+  });
+  overlay.addEventListener("pointerdown", (e) => {
+    if (!helpPop.contains(e.target) && !helpBtn.contains(e.target)) setHelp(false);
+  });
+  $("exit-btn").addEventListener("click", () => closeGame("exit"));
+
+  /* ---------- Keyboard ---------- */
+  function onKeydown(e) {
+    if (e.key === "Escape" && current) {
+      e.preventDefault();
+      if (helpPop.classList.contains("show")) setHelp(false);
+      closeGame("escape");
+    }
+  }
+  document.addEventListener("keydown", onKeydown);
+
+  /* Optional hooks a game can call (also works cross-origin):
+       parent.postMessage({ type: "arcade:activity" }, "*");  // counts as input
+       parent.postMessage({ type: "arcade:exit" }, "*");      // return to menu   */
+  window.addEventListener("message", (e) => {
+    const t = e.data && e.data.type;
+    if (t === "arcade:activity") onActivity();
+    if (t === "arcade:exit") closeGame("exit");
+  });
+
+  /* ---------- Idle reset ---------- */
+  function onActivity() {
+    if (!current) return;
+    const now = Date.now();
+    if (now - lastActivity < 400) return; // throttle mousemove floods
+    resetIdle();
+  }
+  function resetIdle(force) {
+    if (!current) return;
+    lastActivity = Date.now();
+    clearIdle();
+    hideToast();
+    if (WARN_MS > 0) warnTimer = setTimeout(showWarning, IDLE_MS - WARN_MS);
+    idleTimer = setTimeout(() => closeGame("idle"), IDLE_MS);
+  }
+  function clearIdle() {
+    clearTimeout(idleTimer); clearTimeout(warnTimer); clearInterval(countdownTimer);
+    idleTimer = warnTimer = countdownTimer = null;
+  }
+  function showWarning() {
+    let left = Math.round(WARN_MS / 1000);
+    const paint = () => { toast.textContent = "Still playing? Returning to the arcade in " + left + "s. Tap or press any key."; };
+    paint();
+    toast.classList.add("show");
+    countdownTimer = setInterval(() => { left = Math.max(0, left - 1); paint(); }, 1000);
+  }
+  function hideToast() { toast.classList.remove("show"); }
+
+  ACTIVITY_EVENTS.forEach((ev) => window.addEventListener(ev, onActivity, { capture: true, passive: true }));
+  // Focus moving into a cross-origin game fires blur here; treat it as a sign of play.
+  window.addEventListener("blur", onActivity);
+
+  render();
+})();
+</script>
+</body>
+</html>
